@@ -2,7 +2,6 @@ import re
 
 from django.core import exceptions
 from django.db import models
-from django.db.utils import DatabaseError
 
 DEFAULT_PROVIDER_RULES = (
     r'http://vimeo.com/\S*',
@@ -25,25 +24,30 @@ class OEmbedField(models.URLField):
         """
         Initialise with `provider_rules`, an iterable of regex patterns
         defining valid oEmbed provider url schemes.
-        
+        """
+        self._provider_rules = provider_rules
+        super(OEmbedField, self).__init__(*args, **kwargs)
+
+    @property
+    def provider_rules(self):
+        """
         As this field will likely be used in conjunction with Eric Florenzano's
         django-oembed (http://github.com/ericflo/django-oembed), where
         `provider_rules` is not provided, an attempt is made to take access
         provider rules through django-oembed's ProviderRule model. If neither
         is available, a selection of default rules are used.
         """
-        if not provider_rules:
+        if self._provider_rules is None:
             try:
                 from oembed.models import ProviderRule
-                provider_rules = [r.regex for r in ProviderRule.objects.all()]
-            except (ImportError, DatabaseError):
-                provider_rules = DEFAULT_PROVIDER_RULES
-        self.provider_rules = provider_rules
-        super(OEmbedField, self).__init__(*args, **kwargs)
+                rules = [r.regex for r in ProviderRule.objects.all()]
+            except ImportError:
+                rules = DEFAULT_PROVIDER_RULES
+            self._provider_rules = rules
+        return self._provider_rules
         
     def validate(self, value, model_instance):
         for rule in self.provider_rules:
             if re.match(rule, value):
                 return
         raise exceptions.ValidationError('Not a valid oEmbed link')
-        
